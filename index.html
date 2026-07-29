@@ -137,10 +137,30 @@
     cursor:pointer;font-size:13px;font-weight:600;color:var(--ink)}
   .report-actions button:hover{border-color:var(--fd-red);color:var(--fd-red)}
 
+  /* admin: recommended-value editor */
+  .adminbanner{background:#eaf3ff;border:1px solid #a9caf0;border-radius:10px;
+    padding:11px 14px;margin-bottom:14px;display:flex;gap:12px;align-items:center;
+    justify-content:space-between;flex-wrap:wrap}
+  .adminbanner .ab-text{font-size:12.5px;color:#194a80;line-height:1.4;flex:1;min-width:220px}
+  .adminbanner code{background:#dbe8f7;padding:1px 5px;border-radius:4px;font-size:12px}
+  .adminbanner .ab-actions{display:flex;gap:8px;flex-wrap:wrap}
+  .adminbanner .ab-actions button{background:#fff;border:1px solid #a9caf0;color:#194a80;
+    padding:8px 12px;border-radius:7px;cursor:pointer;font-size:13px;font-weight:600;white-space:nowrap}
+  .adminbanner .ab-actions button:hover{background:#dbe8f7}
+  .rec-input{width:72px;padding:6px 8px;border:1px solid var(--line);border-radius:6px;
+    font-size:14px;text-align:center;background:#fffdf5}
+  .rec-input:focus{outline:none;border-color:var(--warn);box-shadow:0 0 0 2px rgba(184,134,11,.18)}
+  .admin-badge{background:rgba(255,255,255,.22);border:1px solid rgba(255,255,255,.5);
+    border-radius:5px;padding:1px 7px;font-size:11px;font-weight:700;margin-left:2px}
+
   .hidden{display:none!important}
   @media(max-width:560px){
     .qty-input{width:64px}
-    th.rec-col,td.rec-col{display:none}
+    /* Hide the recommended column on phones for regular users, but keep it
+       visible for admins so they can edit recommended values on mobile. */
+    body:not(.is-admin) th.rec-col,
+    body:not(.is-admin) td.rec-col{display:none}
+    .rec-input{width:60px}
   }
 </style>
 </head>
@@ -206,6 +226,19 @@
       <button id="collapseAll">Collapse All</button>
     </div>
 
+    <!-- Admin-only banner: editing recommended values -->
+    <div id="adminBanner" class="adminbanner hidden">
+      <div class="ab-text">
+        <b>Admin mode.</b> The <b>Recommended</b> column is now editable — type a minimum (e.g. <code>4</code> or <code>2-3</code>) for any item, or leave blank for none. Values save automatically and drive the reorder list for everyone on this device.
+      </div>
+      <div class="ab-actions">
+        <button id="exportRecs" title="Download the recommended values as a file">⬇ Export</button>
+        <button id="importRecs" title="Load recommended values from a file">⬆ Import</button>
+        <button id="clearRecs" title="Clear all admin-set recommended values">Reset</button>
+        <input type="file" id="importFile" accept="application/json,.json" style="display:none">
+      </div>
+    </div>
+
     <div class="addcat">
       <input id="newCatName" placeholder="New category name (e.g. Escutcheons)">
       <button class="addcatbtn" id="addCatBtn">+ Add Category</button>
@@ -244,8 +277,40 @@
 const LS = {
   users:   'fdec_stock_users',      // {username: {salt, hash}}
   session: 'fdec_stock_session',    // {username}
-  data:    u => 'fdec_stock_data_' + u
+  data:    u => 'fdec_stock_data_' + u,
+  recs:    'fdec_stock_recs'        // shared admin-set recommended mins {catName: {itemName: rec}}
 };
+
+/* ---------- Admin (recommended-value editing) ----------
+   The admin account can edit the "Recommended" column for every item.
+   Those values are stored in a shared key (LS.recs) and applied to all
+   users on this device. Everyone else sees them read-only. */
+const ADMIN_USER = 'fdeckit';        // compared lowercase
+const ADMIN_PASS = '4350KIT';        // fixed admin password
+let IS_ADMIN = false;                // set at login
+
+function getRecs(){ try{return JSON.parse(localStorage.getItem(LS.recs))||{}}catch{return {}} }
+function setRecs(r){ try{localStorage.setItem(LS.recs, JSON.stringify(r));}catch(e){} }
+/* Look up the admin-set recommended value for an item, if any. */
+function recFor(cat, name){
+  const r = getRecs();
+  return (r[cat] && r[cat][name] != null) ? r[cat][name] : null;
+}
+/* Save (or clear) an admin-set recommended value. */
+function setRecFor(cat, name, val){
+  const r = getRecs();
+  if(!r[cat]) r[cat] = {};
+  if(val==='' || val==null) delete r[cat][name];
+  else r[cat][name] = String(val);
+  if(r[cat] && Object.keys(r[cat]).length===0) delete r[cat];
+  setRecs(r);
+}
+/* The effective recommended value for an item = admin override if set,
+   otherwise the item's own baseline rec. */
+function effectiveRec(cat, it){
+  const o = recFor(cat, it.name);
+  return (o!=null) ? o : (it.rec||'');
+}
 
 /* ---------- Default stock (from Kitchen Hood Suppression Material Reference) ---------- */
 /* Format: [item name, recommended minimum]. Part numbers folded into the name where known.
@@ -547,13 +612,17 @@ function loadState(user){
   return s;
 }
 let saveTimer=null;
-function saveState(){
-  if(!CURRENT_USER) return;
-  localStorage.setItem(LS.data(CURRENT_USER), JSON.stringify(STATE));
+function flashSaved(){
   const flag = document.getElementById('saveFlag');
+  if(!flag) return;
   flag.classList.add('show');
   clearTimeout(saveTimer);
   saveTimer = setTimeout(()=>flag.classList.remove('show'), 1200);
+}
+function saveState(){
+  if(!CURRENT_USER) return;
+  localStorage.setItem(LS.data(CURRENT_USER), JSON.stringify(STATE));
+  flashSaved();
   updateSummary();
 }
 
@@ -599,6 +668,15 @@ document.getElementById('loginBtn').onclick = async ()=>{
   const p = document.getElementById('loginPass').value;
   const err = document.getElementById('loginErr');
   err.textContent='';
+
+  // Fixed admin account (recommended-value editor). Not stored in users list.
+  if(u === ADMIN_USER){
+    if(p !== ADMIN_PASS){ err.textContent='Incorrect admin password.'; return; }
+    if(document.getElementById('stayLogged').checked) setSession({username:ADMIN_USER}); else setSession(null);
+    enterApp(ADMIN_USER);
+    return;
+  }
+
   const users = getUsers();
   const rec = users[u];
   if(!rec){ err.textContent='No account with that username.'; return; }
@@ -613,16 +691,22 @@ document.getElementById('loginBtn').onclick = async ()=>{
 };
 
 document.getElementById('logoutBtn').onclick=()=>{
-  setSession(null); CURRENT_USER=null; STATE=null;
+  setSession(null); CURRENT_USER=null; STATE=null; IS_ADMIN=false;
+  document.body.classList.remove('is-admin');
   appScreen.classList.add('hidden'); authScreen.classList.remove('hidden');
   document.getElementById('loginPass').value='';
 };
 
 function enterApp(user){
   CURRENT_USER = user;
+  IS_ADMIN = (user === ADMIN_USER);
   STATE = loadState(user);
   const users = getUsers();
-  document.getElementById('whoami').textContent = (users[user]&&users[user].display)||user;
+  const display = IS_ADMIN ? 'FDECKIT (admin)' : ((users[user]&&users[user].display)||user);
+  document.getElementById('whoami').textContent = display;
+  document.body.classList.toggle('is-admin', IS_ADMIN);
+  const banner = document.getElementById('adminBanner');
+  if(banner) banner.classList.toggle('hidden', !IS_ADMIN);
   authScreen.classList.add('hidden');
   appScreen.classList.remove('hidden');
   renderCats();
@@ -719,10 +803,30 @@ function buildRow(cat, it, idx){
   tdItem.className='item-cell';
   tdItem.innerHTML = escapeHtml(it.name) + (it.custom?' <span class="rec">(added)</span>':'');
 
+  const curRec = effectiveRec(cat, it);   // admin override if set, else baseline
+
   const tdRec = document.createElement('td');
   tdRec.className='rec-col';
-  tdRec.style.color='var(--muted)';
-  tdRec.textContent = it.rec || '—';
+  if(IS_ADMIN){
+    // Editable recommended value (admin only)
+    const rin = document.createElement('input');
+    rin.className='rec-input';
+    rin.value = curRec;
+    rin.placeholder='—';
+    rin.title='Recommended minimum (admin editable). Blank = no minimum.';
+    rin.oninput = ()=>{
+      setRecFor(cat, it.name, rin.value.trim());
+      // live-update this row's on-hand coloring against the new rec
+      const eff = effectiveRec(cat, it);
+      inp.className = 'qty-input instock ' + stockClass(it.qty, eff);
+      flashSaved();
+      updateSummary();
+    };
+    tdRec.appendChild(rin);
+  } else {
+    tdRec.style.color='var(--muted)';
+    tdRec.textContent = curRec || '—';
+  }
 
   const tdQty = document.createElement('td');
   const inp = document.createElement('input');
@@ -730,10 +834,10 @@ function buildRow(cat, it, idx){
   inp.value = it.qty; inp.placeholder='0';
   inp.oninput = ()=>{
     it.qty = inp.value;
-    inp.className = 'qty-input instock ' + stockClass(it.qty, it.rec);
+    inp.className = 'qty-input instock ' + stockClass(it.qty, effectiveRec(cat, it));
     saveState();
   };
-  inp.className = 'qty-input instock ' + stockClass(it.qty, it.rec);
+  inp.className = 'qty-input instock ' + stockClass(it.qty, curRec);
   tdQty.appendChild(inp);
 
   const tdDel = document.createElement('td');
@@ -765,14 +869,14 @@ function updateCatCount(wrap){
 /* ---------- Summary ---------- */
 function updateSummary(){
   let items=0,onHand=0,zero=0,low=0;
-  for(const arr of Object.values(STATE.categories)){
+  for(const [cat, arr] of Object.entries(STATE.categories)){
     for(const it of arr){
       items++;
       const q = parseInt(it.qty,10);
       if(!isNaN(q)){
         onHand += q;
         if(q<=0) zero++;
-        else if(q < parseRecMin(it.rec)) low++;
+        else if(q < parseRecMin(effectiveRec(cat, it))) low++;
       } else { zero++; }
     }
   }
@@ -791,14 +895,15 @@ function collectShortages(){
   const out=[];
   for(const [cat, arr] of Object.entries(STATE.categories)){
     for(const it of arr){
-      const min = parseRecMin(it.rec);
+      const eff = effectiveRec(cat, it);
+      const min = parseRecMin(eff);
       if(min<=0) continue;                       // no meaningful minimum set
       const q = parseInt(it.qty,10);
       const have = isNaN(q)?0:q;
       if(have < min){
         out.push({
           cat, name: it.name, qty: have, min,
-          recText: String(it.rec||''),
+          recText: String(eff||''),
           short: min - have,
           status: have<=0 ? 'out' : 'low'
         });
@@ -890,6 +995,44 @@ function addCategory(){
 document.getElementById('addCatBtn').onclick = addCategory;
 document.getElementById('newCatName').addEventListener('keydown', e=>{ if(e.key==='Enter') addCategory(); });
 
+/* ---------- Admin: recommended-values export / import / reset ---------- */
+document.getElementById('exportRecs').onclick = ()=>{
+  const recs = getRecs();
+  const payload = { type:'fdec_hood_recommended_values', exported: new Date().toISOString(), recs };
+  const blob = new Blob([JSON.stringify(payload, null, 2)], {type:'application/json'});
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = 'FDEC_Hood_Recommended_Values.json';
+  document.body.appendChild(a); a.click();
+  setTimeout(()=>{ URL.revokeObjectURL(a.href); a.remove(); }, 100);
+};
+document.getElementById('importRecs').onclick = ()=> document.getElementById('importFile').click();
+document.getElementById('importFile').onchange = (e)=>{
+  const file = e.target.files && e.target.files[0];
+  if(!file) return;
+  const reader = new FileReader();
+  reader.onload = ()=>{
+    try{
+      const data = JSON.parse(reader.result);
+      const recs = data && data.recs ? data.recs : data;   // accept raw or wrapped
+      if(typeof recs !== 'object' || Array.isArray(recs)) throw new Error('Unexpected format');
+      setRecs(recs);
+      renderCats(); updateSummary();
+      alert('Recommended values imported.');
+    }catch(err){
+      alert('Could not import that file: ' + (err.message||err));
+    }
+    e.target.value = '';
+  };
+  reader.readAsText(file);
+};
+document.getElementById('clearRecs').onclick = ()=>{
+  if(confirm('Clear ALL admin-set recommended values? Items will fall back to their built-in defaults (mostly blank).')){
+    setRecs({});
+    renderCats(); updateSummary();
+  }
+};
+
 /* ---------- Toolbar ---------- */
 document.getElementById('expandAll').onclick=()=>document.querySelectorAll('.cat').forEach(c=>c.classList.add('open'));
 document.getElementById('collapseAll').onclick=()=>document.querySelectorAll('.cat').forEach(c=>c.classList.remove('open'));
@@ -944,8 +1087,9 @@ function cssEsc(s){return (window.CSS&&CSS.escape)?CSS.escape(s):s.replace(/"/g,
 (function boot(){
   const sess = getSession();
   const users = getUsers();
-  if(sess && sess.username && users[sess.username]){
-    enterApp(sess.username);
+  if(sess && sess.username){
+    if(sess.username === ADMIN_USER){ enterApp(ADMIN_USER); }
+    else if(users[sess.username]){ enterApp(sess.username); }
   }
 })();
 </script>
