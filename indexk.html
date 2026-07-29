@@ -1,0 +1,953 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<title>FDEC Kitchen Hood Suppression Inventory</title>
+
+<!-- iOS "Add to Home Screen" support: makes the bookmark open full-screen
+     like a native app and keeps it in Safari's storage container. -->
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="FDEC Hood">
+<meta name="theme-color" content="#b11116">
+<!-- Inline app icon (red FDEC square) so no separate file is needed -->
+<link rel="apple-touch-icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='180' height='180'%3E%3Crect width='180' height='180' rx='34' fill='%23b11116'/%3E%3Ctext x='90' y='118' font-family='Arial,Helvetica,sans-serif' font-size='86' font-weight='700' fill='white' text-anchor='middle'%3EFD%3C/text%3E%3C/svg%3E">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='64' height='64'%3E%3Crect width='64' height='64' rx='12' fill='%23b11116'/%3E%3Ctext x='32' y='44' font-family='Arial' font-size='34' font-weight='700' fill='white' text-anchor='middle'%3EFD%3C/text%3E%3C/svg%3E">
+<!-- Inline web app manifest (data URI) for Chrome/Android installability -->
+<link rel="manifest" href="data:application/manifest+json,%7B%22name%22%3A%22FDEC%20Kitchen%20Hood%20Stock%22%2C%22short_name%22%3A%22FDEC%20Hood%22%2C%22display%22%3A%22standalone%22%2C%22background_color%22%3A%22%23eef1f4%22%2C%22theme_color%22%3A%22%23b11116%22%2C%22start_url%22%3A%22.%22%7D">
+<style>
+  :root{
+    --fd-red:#b11116; --fd-red-dark:#8a0d11; --ink:#1a1a1a; --muted:#5c6470;
+    --line:#d7dbe0; --bg:#eef1f4; --card:#ffffff; --ok:#1f7a3d; --warn:#b8860b;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Arial,sans-serif;
+    background:var(--bg);color:var(--ink);font-size:15px;line-height:1.45}
+  header{background:var(--fd-red);color:#fff;padding:14px 18px;position:sticky;top:0;z-index:20;
+    box-shadow:0 2px 6px rgba(0,0,0,.2);display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap}
+  header h1{margin:0;font-size:17px;font-weight:700;letter-spacing:.3px}
+  header .sub{font-size:12px;opacity:.9;font-weight:400}
+  .userbar{display:flex;align-items:center;gap:10px;font-size:13px}
+  .userbar button{background:rgba(255,255,255,.15);color:#fff;border:1px solid rgba(255,255,255,.4);
+    padding:6px 12px;border-radius:6px;cursor:pointer;font-size:13px}
+  .userbar button:hover{background:rgba(255,255,255,.28)}
+  .wrap{max-width:900px;margin:0 auto;padding:16px}
+  .saveflag{font-size:12px;color:#fff;opacity:0;transition:opacity .3s}
+  .saveflag.show{opacity:1}
+
+  /* Auth screen */
+  .auth{max-width:420px;margin:60px auto;background:var(--card);border-radius:12px;
+    box-shadow:0 6px 22px rgba(0,0,0,.12);padding:28px 26px}
+  .auth h2{margin:0 0 4px;color:var(--fd-red);font-size:20px}
+  .auth p.lead{margin:0 0 18px;color:var(--muted);font-size:13px}
+  .auth label{display:block;font-size:13px;font-weight:600;margin:12px 0 5px}
+  .auth input{width:100%;padding:11px 12px;border:1px solid var(--line);border-radius:7px;font-size:15px}
+  .auth .btn{width:100%;margin-top:18px;background:var(--fd-red);color:#fff;border:none;
+    padding:12px;border-radius:7px;font-size:15px;font-weight:600;cursor:pointer}
+  .auth .btn:hover{background:var(--fd-red-dark)}
+  .auth .toggle{text-align:center;margin-top:14px;font-size:13px;color:var(--muted)}
+  .auth .toggle a{color:var(--fd-red);cursor:pointer;font-weight:600;text-decoration:none}
+  .auth .err{color:var(--fd-red);font-size:13px;margin-top:10px;min-height:16px}
+  .auth .row{display:flex;align-items:center;gap:8px;margin-top:14px;font-size:13px;color:var(--muted)}
+  .filewarn{background:#fff4e5;border:1px solid #f0c07a;color:#8a5a00;font-size:12.5px;
+    padding:10px 12px;border-radius:8px;margin-bottom:12px;line-height:1.4}
+  .installtip{position:relative;background:#eaf3ff;border:1px solid #a9caf0;color:#194a80;
+    font-size:12.5px;padding:10px 28px 10px 12px;border-radius:8px;margin-bottom:12px;line-height:1.4}
+  .installtip .dismiss{position:absolute;top:6px;right:8px;cursor:pointer;color:#7a94b0;font-size:13px}
+
+  /* Categories */
+  .cat{background:var(--card);border-radius:10px;margin-bottom:12px;overflow:hidden;
+    box-shadow:0 1px 3px rgba(0,0,0,.08);border:1px solid var(--line)}
+  .cat-head{background:#f4f6f8;padding:12px 16px;cursor:pointer;display:flex;
+    align-items:center;justify-content:space-between;user-select:none;border-left:5px solid var(--fd-red)}
+  .cat-head h3{margin:0;font-size:15px;font-weight:700;color:var(--ink)}
+  .cat-head .meta{font-size:12px;color:var(--muted);display:flex;gap:12px;align-items:center}
+  .cat-head .chev{transition:transform .2s;color:var(--muted);font-size:13px}
+  .cat.open .chev{transform:rotate(90deg)}
+  .cat-body{display:none;padding:10px 14px 16px}
+  .cat.open .cat-body{display:block}
+
+  table{width:100%;border-collapse:collapse}
+  th{text-align:left;font-size:11px;text-transform:uppercase;letter-spacing:.4px;
+    color:var(--muted);padding:6px 8px;border-bottom:2px solid var(--line)}
+  td{padding:6px 8px;border-bottom:1px solid #eef0f2;vertical-align:middle}
+  .item-cell{font-size:14px}
+  .item-cell .rec{font-size:11px;color:var(--muted);margin-left:6px}
+  .qty-input{width:80px;padding:7px 8px;border:1px solid var(--line);border-radius:6px;
+    font-size:15px;text-align:center}
+  .qty-input:focus{outline:none;border-color:var(--fd-red);box-shadow:0 0 0 2px rgba(177,17,22,.15)}
+  .del-btn{background:none;border:none;color:#bbb;cursor:pointer;font-size:16px;padding:2px 6px}
+  .del-btn:hover{color:var(--fd-red)}
+  .instock{font-weight:700}
+  .instock.zero{color:#c0392b}
+  .instock.low{color:var(--warn)}
+  .instock.ok{color:var(--ok)}
+
+  /* add item row */
+  .additem{display:flex;gap:8px;margin-top:12px;flex-wrap:wrap;align-items:center}
+  .additem input{flex:1;min-width:140px;padding:9px 10px;border:1px dashed var(--line);border-radius:6px;font-size:14px}
+  .additem .addbtn{background:var(--ok);color:#fff;border:none;padding:9px 16px;border-radius:6px;
+    cursor:pointer;font-size:14px;font-weight:600;white-space:nowrap}
+  .additem .addbtn:hover{filter:brightness(1.08)}
+
+  .toolbar{display:flex;gap:10px;flex-wrap:wrap;margin:4px 0 14px;align-items:center}
+  .toolbar input.search{flex:1;min-width:180px;padding:10px 12px;border:1px solid var(--line);
+    border-radius:7px;font-size:14px}
+  .toolbar button{background:#fff;border:1px solid var(--line);padding:10px 14px;border-radius:7px;
+    cursor:pointer;font-size:13px;font-weight:600;color:var(--ink)}
+  .toolbar button:hover{border-color:var(--fd-red);color:var(--fd-red)}
+  .summary{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:12px 16px;
+    margin-bottom:14px;display:flex;gap:22px;flex-wrap:wrap;font-size:13px}
+  .summary b{color:var(--fd-red);font-size:18px;display:block}
+  .summary span.lbl{color:var(--muted);font-size:12px}
+  footer{text-align:center;color:var(--muted);font-size:12px;padding:20px}
+
+  /* add category control */
+  .addcat{background:var(--card);border:1px dashed var(--line);border-radius:10px;
+    padding:12px 16px;margin-bottom:14px;display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+  .addcat input{flex:1;min-width:180px;padding:9px 10px;border:1px solid var(--line);border-radius:6px;font-size:14px}
+  .addcat .addcatbtn{background:var(--fd-red);color:#fff;border:none;padding:9px 16px;border-radius:6px;
+    cursor:pointer;font-size:14px;font-weight:600;white-space:nowrap}
+  .addcat .addcatbtn:hover{background:var(--fd-red-dark)}
+  .cat-head .del-cat{background:none;border:none;color:#c9ccd1;cursor:pointer;font-size:15px;
+    padding:2px 6px;line-height:1}
+  .cat-head .del-cat:hover{color:var(--fd-red)}
+
+  /* below-minimum report */
+  .report{background:var(--card);border:1px solid var(--line);border-radius:10px;
+    box-shadow:0 1px 3px rgba(0,0,0,.08);margin:18px 0 6px;overflow:hidden}
+  .report-head{background:#fff4e5;border-left:5px solid var(--warn);padding:12px 16px;
+    display:flex;align-items:center;justify-content:space-between;gap:12px}
+  .report-head h3{margin:0;font-size:15px;font-weight:700;color:#8a5a00}
+  .report-head .rcount{font-size:12px;color:#8a5a00;font-weight:600}
+  .report-body{padding:6px 14px 14px}
+  .report .rgroup{font-size:12px;text-transform:uppercase;letter-spacing:.4px;color:var(--muted);
+    font-weight:700;padding:12px 4px 4px}
+  .report table{width:100%;border-collapse:collapse}
+  .report td{padding:6px 8px;border-bottom:1px solid #eef0f2;font-size:14px}
+  .report td.rq{text-align:right;white-space:nowrap;font-variant-numeric:tabular-nums}
+  .report .tag{display:inline-block;font-size:11px;font-weight:700;padding:1px 7px;border-radius:10px}
+  .report .tag.out{background:#fdecea;color:#c0392b}
+  .report .tag.low{background:#fdf3e0;color:var(--warn)}
+  .report .short{color:var(--fd-red);font-weight:700}
+  .report .allgood{padding:16px;text-align:center;color:var(--ok);font-weight:600;font-size:14px}
+  .report-actions{padding:0 14px 14px}
+  .report-actions button{background:#fff;border:1px solid var(--line);padding:9px 14px;border-radius:7px;
+    cursor:pointer;font-size:13px;font-weight:600;color:var(--ink)}
+  .report-actions button:hover{border-color:var(--fd-red);color:var(--fd-red)}
+
+  .hidden{display:none!important}
+  @media(max-width:560px){
+    .qty-input{width:64px}
+    th.rec-col,td.rec-col{display:none}
+  }
+</style>
+</head>
+<body>
+
+<!-- ===================== AUTH SCREEN ===================== -->
+<div id="authScreen">
+  <div class="auth">
+    <h2>FDEC Kitchen Hood Stock</h2>
+    <p class="lead">Kitchen Hood Suppression Inventory</p>
+    <div id="fileWarn" class="filewarn hidden">⚠️ You've opened this from a file. On iPhone, saved logins and inventory may not stick. Host it at a web address (see the setup note) and bookmark that instead.</div>
+    <div id="installTip" class="installtip hidden">📌 To keep this handy: tap the <b>Share</b> icon, then <b>Add to Home Screen</b>.<span class="dismiss" id="tipDismiss">✕</span></div>
+    <div id="loginForm">
+      <label>Username</label>
+      <input id="loginUser" autocomplete="username" placeholder="Username">
+      <label>Password</label>
+      <input id="loginPass" type="password" autocomplete="current-password" placeholder="Password">
+      <div class="row"><input type="checkbox" id="stayLogged" checked style="width:auto"> <label for="stayLogged" style="margin:0;font-weight:400;cursor:pointer">Keep me logged in</label></div>
+      <button class="btn" id="loginBtn">Log In</button>
+      <div class="err" id="loginErr"></div>
+      <div class="toggle">No account? <a id="toRegister">Create one</a></div>
+    </div>
+    <div id="registerForm" class="hidden">
+      <label>New Username</label>
+      <input id="regUser" autocomplete="username" placeholder="Choose a username">
+      <label>New Password</label>
+      <input id="regPass" type="password" autocomplete="new-password" placeholder="Choose a password">
+      <label>Confirm Password</label>
+      <input id="regPass2" type="password" autocomplete="new-password" placeholder="Re-enter password">
+      <div class="row"><input type="checkbox" id="stayLogged2" checked style="width:auto"> <label for="stayLogged2" style="margin:0;font-weight:400;cursor:pointer">Keep me logged in</label></div>
+      <button class="btn" id="regBtn">Register &amp; Log In</button>
+      <div class="err" id="regErr"></div>
+      <div class="toggle">Already registered? <a id="toLogin">Log in</a></div>
+    </div>
+  </div>
+</div>
+
+<!-- ===================== APP SCREEN ===================== -->
+<div id="appScreen" class="hidden">
+  <header>
+    <div>
+      <h1>FIRE DEFENSE EQUIPMENT COMPANY</h1>
+      <div class="sub">Kitchen Hood Suppression — Parts &amp; Material Inventory</div>
+    </div>
+    <div class="userbar">
+      <span class="saveflag" id="saveFlag">✓ Saved</span>
+      <span id="whoami"></span>
+      <button id="logoutBtn">Log Out</button>
+    </div>
+  </header>
+
+  <div class="wrap">
+    <div class="summary">
+      <div><b id="statItems">0</b><span class="lbl">Line items</span></div>
+      <div><b id="statOnHand">0</b><span class="lbl">Total on hand</span></div>
+      <div><b id="statZero">0</b><span class="lbl">Out of stock</span></div>
+      <div><b id="statLow">0</b><span class="lbl">Below minimum</span></div>
+    </div>
+
+    <div class="toolbar">
+      <input class="search" id="search" placeholder="Search items across all categories…">
+      <button id="expandAll">Expand All</button>
+      <button id="collapseAll">Collapse All</button>
+    </div>
+
+    <div class="addcat">
+      <input id="newCatName" placeholder="New category name (e.g. Escutcheons)">
+      <button class="addcatbtn" id="addCatBtn">+ Add Category</button>
+    </div>
+
+    <div id="cats"></div>
+
+    <!-- ===== Below-minimum / reorder report ===== -->
+    <div class="report" id="lowReport">
+      <div class="report-head">
+        <h3>⚠️ Below Recommended Minimums — Reorder List</h3>
+        <span class="rcount" id="reportCount"></span>
+      </div>
+      <div class="report-body" id="reportBody"></div>
+      <div class="report-actions" id="reportActions"></div>
+    </div>
+
+    <footer>
+      Kitchen hood suppression parts and material for inspection, testing, maintenance, repair, and installation
+      across Ansul R-102 &amp; Piranha, Range Guard (UCH / A+), Buckeye Kitchen Mister, Badger, and Pyro-Chem KK II.
+      Nozzles, fusible link temps, and cartridge sizes are system-specific — always verify against the design drawing
+      and manufacturer parts list. Set recommended minimums per truck/shop as needed. All entries auto-save to this device.
+    </footer>
+  </div>
+</div>
+
+<script>
+/* ============================================================
+   FDEC Vehicle Stock Inventory
+   - Local accounts (username/password) with SHA-256 hashing
+   - Persistent login (localStorage session, optional)
+   - Per-user inventory state, auto-saved
+   - Dropdown (category) -> item -> manual qty, add new items
+   ============================================================ */
+
+const LS = {
+  users:   'fdec_stock_users',      // {username: {salt, hash}}
+  session: 'fdec_stock_session',    // {username}
+  data:    u => 'fdec_stock_data_' + u
+};
+
+/* ---------- Default stock (from Kitchen Hood Suppression Material Reference) ---------- */
+/* Format: [item name, recommended minimum]. Part numbers folded into the name where known.
+   Recommended minimums are left blank by default — set them per truck/shop as needed. */
+const DEFAULT_STOCK = {
+  /* ===================== ANSUL R-102 ===================== */
+  "Ansul R-102 — Agent & Cylinders": [
+    ["ANSULEX Low pH Liquid Agent (1.5 / 3.0 gal)",""],
+    ["Regulated Release Assembly / Tank (AUTOMAN)",""],
+    ["Nitrogen cartridge — LT-30-R / LT-A-101-30",""],
+    ["Cartridge for remote/mechanical release",""]
+  ],
+  "Ansul R-102 — Detection & Fusible Links": [
+    ["Fusible link 165°F (Series ML)",""],
+    ["Fusible link 212°F",""],
+    ["Fusible link 280°F / 360°F / 450°F / 500°F",""],
+    ["Detector bracket / terminal link",""],
+    ["Stainless detection cable / crimps",""]
+  ],
+  "Ansul R-102 — Nozzles": [
+    ["1N / 1W nozzle",""],["2N / 2W nozzle",""],["3N nozzle",""],
+    ["230 / 245 / 260 / 290 nozzle",""],["Nozzle blow-off caps",""]
+  ],
+  "Ansul R-102 — Distribution / Piping": [
+    ["3/8\" Sch 40 black pipe & fittings",""],
+    ["Compression / detection conduit & EMT (1/2\")",""],
+    ["Corner pulleys / tee pulleys",""]
+  ],
+  "Ansul R-102 — Actuation & Controls": [
+    ["Remote manual pull station",""],
+    ["Mechanical gas valve (with reset)",""],
+    ["Electric gas valve",""],
+    ["Micro-switch kit",""]
+  ],
+  "Ansul R-102 — Service / ITM Consumables": [
+    ["Semi-annual link replacement kit",""],
+    ["Nozzle caps (bag)",""],
+    ["Cartridge (recharge)",""],
+    ["Inspection tags / certificates",""],
+    ["Pipe dope / sealant (UL listed)",""]
+  ],
+
+  /* ===================== ANSUL PIRANHA ===================== */
+  "Ansul Piranha — Agent, Water & Cylinders": [
+    ["ANSULEX Low pH Liquid Agent (wet chem charge)",""],
+    ["Piranha regulated release / tank assy (dual-agent AUTOMAN)",""],
+    ["Water tank / water supply connection",""],
+    ["Nitrogen expellant cartridge — LT-A-101-30",""]
+  ],
+  "Ansul Piranha — Detection & Fusible Links": [
+    ["Fusible links 165–500°F (Series ML)",""],
+    ["Detection cable / crimps / pulleys",""]
+  ],
+  "Ansul Piranha — Nozzles": [
+    ["Piranha appliance nozzles",""],
+    ["Piranha duct nozzle",""],
+    ["Metal blow-off caps",""]
+  ],
+  "Ansul Piranha — Actuation & Controls": [
+    ["Remote manual pull station",""],
+    ["Gas valve (mechanical or electric)",""],
+    ["Micro-switch kit",""]
+  ],
+  "Ansul Piranha — Service / ITM Consumables": [
+    ["Fusible link kit (Series ML)",""],
+    ["Water line check / flush verification",""],
+    ["Cartridge recharge",""],
+    ["Inspection tags / certificates",""]
+  ],
+
+  /* ===================== RANGE GUARD (UCH & A+) ===================== */
+  "Range Guard — Agent & Cylinders": [
+    ["Range Guard wet chemical agent",""],
+    ["Agent tank / cylinder assembly",""],
+    ["Nitrogen / CO₂ expellant cartridge",""],
+    ["Universal Control Head (UCH)",""]
+  ],
+  "Range Guard — Detection & Fusible Links": [
+    ["Fusible links (165–500°F)",""],
+    ["Detection line / cable & crimps",""],
+    ["Pulleys / corner pulleys",""],
+    ["Terminal link / bracket",""]
+  ],
+  "Range Guard — Nozzles": [
+    ["Range Guard appliance nozzles (A+)",""],
+    ["Duct / plenum nozzle",""],
+    ["Nozzle blow-off caps",""]
+  ],
+  "Range Guard — Distribution / Piping": [
+    ["Sch 40 black pipe & fittings",""],
+    ["EMT / conduit for detection (1/2\")",""]
+  ],
+  "Range Guard — Actuation & Controls": [
+    ["Remote manual pull station",""],
+    ["Gas shut-off valve (mech/electric)",""],
+    ["Micro-switch(es)",""]
+  ],
+  "Range Guard — Service / ITM Consumables": [
+    ["Fusible link replacement kit",""],
+    ["Cartridge recharge",""],
+    ["Nozzle caps",""],
+    ["Inspection tags / certificates",""]
+  ],
+
+  /* ===================== BUCKEYE KITCHEN MISTER ===================== */
+  "Buckeye Kitchen Mister — Agent & Cylinders": [
+    ["Buckeye wet chemical agent",""],
+    ["Agent cylinder / tank",""],
+    ["Nitrogen expellant cartridge",""],
+    ["Release / control assembly",""]
+  ],
+  "Buckeye Kitchen Mister — Detection & Fusible Links": [
+    ["Fusible links (165–500°F)",""],
+    ["Detection cable & crimps",""],
+    ["Pulleys",""]
+  ],
+  "Buckeye Kitchen Mister — Nozzles": [
+    ["Kitchen Mister appliance nozzles",""],
+    ["Duct / plenum nozzle",""],
+    ["Blow-off caps",""]
+  ],
+  "Buckeye Kitchen Mister — Actuation & Controls": [
+    ["Remote manual pull station",""],
+    ["Gas valve (mech/electric)",""],
+    ["Micro-switch kit",""]
+  ],
+  "Buckeye Kitchen Mister — Service / ITM Consumables": [
+    ["Fusible link kit",""],
+    ["Cartridge recharge",""],
+    ["Inspection tags / certificates",""]
+  ],
+
+  /* ===================== BADGER ===================== */
+  "Badger — Agent & Cylinders": [
+    ["Badger wet chemical agent",""],
+    ["Agent tank / cylinder",""],
+    ["Nitrogen expellant cartridge",""],
+    ["Release / control head",""]
+  ],
+  "Badger — Detection & Fusible Links": [
+    ["Fusible links (165–500°F)",""],
+    ["Detection cable, crimps, pulleys",""]
+  ],
+  "Badger — Nozzles": [
+    ["Badger appliance / duct nozzles",""],
+    ["Blow-off caps",""]
+  ],
+  "Badger — Actuation & Controls": [
+    ["Remote manual pull station",""],
+    ["Gas valve (mech/electric)",""],
+    ["Micro-switch kit",""]
+  ],
+  "Badger — Service / ITM Consumables": [
+    ["Fusible link kit",""],
+    ["Cartridge recharge",""],
+    ["Inspection tags / certificates",""]
+  ],
+
+  /* ===================== PYRO-CHEM KITCHEN KNIGHT II ===================== */
+  "Pyro-Chem KK II — Agent & Cylinders": [
+    ["Pyro-Chem PCL wet chemical agent",""],
+    ["Agent tank / cylinder (1.5 / 3.0 gal)",""],
+    ["Regulated release assembly (mech/electric)",""],
+    ["Nitrogen expellant cartridge",""]
+  ],
+  "Pyro-Chem KK II — Detection & Fusible Links": [
+    ["Fusible links (165–500°F)",""],
+    ["Detection cable, crimps, pulleys",""],
+    ["Terminal link / bracket",""]
+  ],
+  "Pyro-Chem KK II — Nozzles": [
+    ["KK II appliance nozzles",""],
+    ["Duct / plenum nozzle",""],
+    ["Blow-off caps",""]
+  ],
+  "Pyro-Chem KK II — Distribution / Piping": [
+    ["Sch 40 black pipe & fittings",""],
+    ["EMT / conduit for detection (1/2\")",""]
+  ],
+  "Pyro-Chem KK II — Actuation & Controls": [
+    ["Remote manual pull station",""],
+    ["Gas valve (mechanical or electric)",""],
+    ["Micro-switch kit",""]
+  ],
+  "Pyro-Chem KK II — Service / ITM Consumables": [
+    ["Fusible link replacement kit",""],
+    ["Cartridge recharge",""],
+    ["Nozzle caps",""],
+    ["Inspection tags / certificates",""]
+  ],
+
+  /* ===================== SHARED / ALL SYSTEMS ===================== */
+  "Shared — Inspection / ITM Consumables": [
+    ["Fusible links (assorted 165–500°F)",""],
+    ["Nozzle blow-off caps (assorted)",""],
+    ["Inspection tags & certificates",""],
+    ["Grease-cutting cleaner / degreaser",""],
+    ["Pipe dope / thread sealant (UL listed)",""],
+    ["Teflon tape (where permitted)",""]
+  ],
+  "Shared — Detection Line Hardware": [
+    ["Stainless detection cable (bulk spool)",""],
+    ["Crimp sleeves / stops",""],
+    ["Corner & tee pulleys",""],
+    ["S-hooks / bracketry",""]
+  ],
+  "Shared — Actuation / Gas Shutoff": [
+    ["Mechanical gas valves (3/4\"–2\"+)",""],
+    ["Electric gas valves & relays",""],
+    ["Manual pull stations",""],
+    ["Micro-switches",""]
+  ],
+  "Shared — Piping / Distribution": [
+    ["Sch 40 black pipe & fittings (3/8\"–1/2\")",""],
+    ["EMT / conduit & connectors",""],
+    ["Pipe hangers / strut / hardware",""]
+  ],
+  "Shared — Tools (Service Truck)": [
+    ["Cartridge scale",""],
+    ["Link/cable crimp tool",""],
+    ["Pipe wrenches / channel locks",""],
+    ["Cordless drill & bits",""],
+    ["Manometer / test equipment",""],
+    ["Nozzle cap tool / pick",""]
+  ]
+};
+
+/* ---------- Crypto helpers ----------
+   crypto.subtle only exists in a "secure context" (https:// or file://).
+   iOS in-app browsers / http:// leave it undefined, which used to make
+   account creation fail silently. We fall back to a pure-JS hash so
+   registration and login work everywhere. Each stored user records which
+   method built its hash ("alg") so existing accounts still verify. */
+const HAS_SUBTLE = !!(window.crypto && crypto.subtle && crypto.subtle.digest);
+
+async function sha256(str){
+  const buf = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(str));
+  return Array.from(new Uint8Array(buf)).map(b=>b.toString(16).padStart(2,'0')).join('');
+}
+// Deterministic non-crypto fallback hash (FNV-1a, 128-bit-ish via 4 lanes).
+function fallbackHash(str){
+  let h1=0x811c9dc5,h2=0x1000193,h3=0xdeadbeef,h4=0x41c6ce57;
+  for(let i=0;i<str.length;i++){
+    const c=str.charCodeAt(i);
+    h1=(h1^c)*0x01000193>>>0;
+    h2=(h2^((c<<3)|(c>>>2)))*0x85ebca6b>>>0;
+    h3=(h3^(c+i))*0xc2b2ae35>>>0;
+    h4=(h4^(c*131))*0x27d4eb2f>>>0;
+  }
+  const hex=n=>(n>>>0).toString(16).padStart(8,'0');
+  // run a few mixing rounds for a longer digest
+  for(let r=0;r<3;r++){ h1=(h1^h4)*16777619>>>0; h2=(h2^h1)*16777619>>>0; h3=(h3^h2)*16777619>>>0; h4=(h4^h3)*16777619>>>0; }
+  return hex(h1)+hex(h2)+hex(h3)+hex(h4);
+}
+// Hash with the best available method; returns {hash, alg}.
+async function hashPass(saltPlusPass){
+  if(HAS_SUBTLE){
+    try{ return {hash: await sha256(saltPlusPass), alg:'sha256'}; }
+    catch(e){ /* fall through */ }
+  }
+  return {hash: fallbackHash(saltPlusPass), alg:'fnv'};
+}
+// Verify against a stored record, honoring the algorithm it was created with.
+async function verifyPass(saltPlusPass, rec){
+  const alg = rec.alg || 'sha256'; // legacy accounts predate the alg field
+  if(alg==='sha256' && HAS_SUBTLE){ try{ return (await sha256(saltPlusPass))===rec.hash; }catch(e){} }
+  if(alg==='sha256' && !HAS_SUBTLE){ return false; } // can't verify sha256 here
+  return fallbackHash(saltPlusPass)===rec.hash;
+}
+function randSalt(){
+  const a = new Uint8Array(16);
+  if(window.crypto && crypto.getRandomValues){ crypto.getRandomValues(a); }
+  else { for(let i=0;i<16;i++) a[i]=Math.floor(Math.random()*256); }
+  return Array.from(a).map(b=>b.toString(16).padStart(2,'0')).join('');
+}
+
+/* ---------- Storage helpers ---------- */
+function storageWorks(){
+  try{ const k='__fdec_test__'; localStorage.setItem(k,'1'); localStorage.removeItem(k); return true; }
+  catch(e){ return false; }
+}
+function getUsers(){ try{return JSON.parse(localStorage.getItem(LS.users))||{}}catch{return {}} }
+function setUsers(u){ localStorage.setItem(LS.users, JSON.stringify(u)); }
+function getSession(){ try{return JSON.parse(localStorage.getItem(LS.session))}catch{return null} }
+function setSession(s){ if(s) localStorage.setItem(LS.session, JSON.stringify(s)); else localStorage.removeItem(LS.session); }
+
+let CURRENT_USER = null;
+let STATE = null; // {categories:{catName:[{name,rec,qty,custom}]}}
+
+function loadState(user){
+  let s;
+  try{ s = JSON.parse(localStorage.getItem(LS.data(user))); }catch{ s=null; }
+  if(!s || !s.categories){
+    s = {categories:{}};
+    for(const [cat, items] of Object.entries(DEFAULT_STOCK)){
+      s.categories[cat] = items.map(([name,rec])=>({name, rec, qty:'', custom:false}));
+    }
+  }
+  return s;
+}
+let saveTimer=null;
+function saveState(){
+  if(!CURRENT_USER) return;
+  localStorage.setItem(LS.data(CURRENT_USER), JSON.stringify(STATE));
+  const flag = document.getElementById('saveFlag');
+  flag.classList.add('show');
+  clearTimeout(saveTimer);
+  saveTimer = setTimeout(()=>flag.classList.remove('show'), 1200);
+  updateSummary();
+}
+
+/* ---------- Auth flow ---------- */
+const authScreen = document.getElementById('authScreen');
+const appScreen  = document.getElementById('appScreen');
+
+document.getElementById('toRegister').onclick=()=>{
+  document.getElementById('loginForm').classList.add('hidden');
+  document.getElementById('registerForm').classList.remove('hidden');
+};
+document.getElementById('toLogin').onclick=()=>{
+  document.getElementById('registerForm').classList.add('hidden');
+  document.getElementById('loginForm').classList.remove('hidden');
+};
+
+document.getElementById('regBtn').onclick = async ()=>{
+  const u = document.getElementById('regUser').value.trim();
+  const p = document.getElementById('regPass').value;
+  const p2= document.getElementById('regPass2').value;
+  const err = document.getElementById('regErr');
+  err.textContent='';
+  if(!u){ err.textContent='Enter a username.'; return; }
+  if(p.length<4){ err.textContent='Password must be at least 4 characters.'; return; }
+  if(p!==p2){ err.textContent='Passwords do not match.'; return; }
+  const users = getUsers();
+  if(users[u.toLowerCase()]){ err.textContent='That username already exists.'; return; }
+  try{
+    if(!storageWorks()){ err.textContent='This browser is blocking local storage (often Private Browsing on iOS). Turn off Private Browsing, or open the file in Safari or Chrome directly.'; return; }
+    const salt = randSalt();
+    const {hash, alg} = await hashPass(salt + p);
+    users[u.toLowerCase()] = {salt, hash, alg, display:u};
+    setUsers(users);
+    if(document.getElementById('stayLogged2').checked) setSession({username:u.toLowerCase()});
+    enterApp(u.toLowerCase());
+  }catch(e){
+    err.textContent = 'Could not create account: ' + (e && e.message ? e.message : e);
+  }
+};
+
+document.getElementById('loginBtn').onclick = async ()=>{
+  const u = document.getElementById('loginUser').value.trim().toLowerCase();
+  const p = document.getElementById('loginPass').value;
+  const err = document.getElementById('loginErr');
+  err.textContent='';
+  const users = getUsers();
+  const rec = users[u];
+  if(!rec){ err.textContent='No account with that username.'; return; }
+  try{
+    const ok = await verifyPass(rec.salt + p, rec);
+    if(!ok){ err.textContent='Incorrect password.'; return; }
+    if(document.getElementById('stayLogged').checked) setSession({username:u}); else setSession(null);
+    enterApp(u);
+  }catch(e){
+    err.textContent = 'Could not log in: ' + (e && e.message ? e.message : e);
+  }
+};
+
+document.getElementById('logoutBtn').onclick=()=>{
+  setSession(null); CURRENT_USER=null; STATE=null;
+  appScreen.classList.add('hidden'); authScreen.classList.remove('hidden');
+  document.getElementById('loginPass').value='';
+};
+
+function enterApp(user){
+  CURRENT_USER = user;
+  STATE = loadState(user);
+  const users = getUsers();
+  document.getElementById('whoami').textContent = (users[user]&&users[user].display)||user;
+  authScreen.classList.add('hidden');
+  appScreen.classList.remove('hidden');
+  renderCats();
+  updateSummary();
+}
+
+/* ---------- Render inventory ---------- */
+function parseRecMin(rec){
+  // returns the numeric minimum implied by rec string (e.g. "2-3"->2, "6-10"->6)
+  const m = String(rec).match(/\d+/);
+  return m ? parseInt(m[0],10) : 0;
+}
+function stockClass(qty, rec){
+  const q = parseInt(qty,10);
+  if(isNaN(q)) return '';
+  if(q<=0) return 'zero';
+  if(q < parseRecMin(rec)) return 'low';
+  return 'ok';
+}
+
+function renderCats(){
+  const host = document.getElementById('cats');
+  host.innerHTML='';
+  for(const [cat, items] of Object.entries(STATE.categories)){
+    const wrap = document.createElement('div');
+    wrap.className='cat';
+    wrap.dataset.cat = cat;
+
+    const head = document.createElement('div');
+    head.className='cat-head';
+    head.innerHTML = `<h3>${escapeHtml(cat)}</h3>
+      <div class="meta"><span class="cnt"></span>
+        <button class="del-cat" title="Remove category">🗑</button>
+        <span class="chev">▶</span></div>`;
+    head.onclick=(e)=>{ if(e.target.closest('.del-cat')) return; wrap.classList.toggle('open'); };
+    head.querySelector('.del-cat').onclick=(e)=>{
+      e.stopPropagation();
+      const n = (STATE.categories[cat]||[]).length;
+      const msg = n>0
+        ? `Remove category "${cat}" and its ${n} item${n===1?'':'s'}?`
+        : `Remove empty category "${cat}"?`;
+      if(confirm(msg)){
+        delete STATE.categories[cat];
+        saveState(); renderCats();
+      }
+    };
+
+    const body = document.createElement('div');
+    body.className='cat-body';
+
+    const table = document.createElement('table');
+    table.innerHTML = `<thead><tr>
+      <th>Item</th><th class="rec-col">Recommended</th><th>On&nbsp;Hand</th><th></th>
+    </tr></thead><tbody></tbody>`;
+    const tb = table.querySelector('tbody');
+
+    items.forEach((it, idx)=> tb.appendChild(buildRow(cat, it, idx)));
+    body.appendChild(table);
+
+    // add-item row
+    const add = document.createElement('div');
+    add.className='additem';
+    add.innerHTML = `
+      <input class="new-name" placeholder="New item name">
+      <input class="new-rec" placeholder="Rec. min (optional)" style="max-width:140px">
+      <input class="new-qty" placeholder="Qty" type="number" min="0" style="max-width:90px;flex:0 0 90px">
+      <button class="addbtn">+ Add Item</button>`;
+    add.querySelector('.addbtn').onclick=()=>{
+      const name = add.querySelector('.new-name').value.trim();
+      if(!name) return;
+      const rec = add.querySelector('.new-rec').value.trim();
+      const qty = add.querySelector('.new-qty').value.trim();
+      STATE.categories[cat].push({name, rec, qty, custom:true});
+      saveState();
+      renderCats();
+      // keep this category open
+      const reopened = document.querySelector(`.cat[data-cat="${cssEsc(cat)}"]`);
+      if(reopened) reopened.classList.add('open');
+    };
+    body.appendChild(add);
+
+    wrap.appendChild(head);
+    wrap.appendChild(body);
+    host.appendChild(wrap);
+    updateCatCount(wrap);
+  }
+}
+
+function buildRow(cat, it, idx){
+  const tr = document.createElement('tr');
+  tr.dataset.name = it.name.toLowerCase();
+
+  const tdItem = document.createElement('td');
+  tdItem.className='item-cell';
+  tdItem.innerHTML = escapeHtml(it.name) + (it.custom?' <span class="rec">(added)</span>':'');
+
+  const tdRec = document.createElement('td');
+  tdRec.className='rec-col';
+  tdRec.style.color='var(--muted)';
+  tdRec.textContent = it.rec || '—';
+
+  const tdQty = document.createElement('td');
+  const inp = document.createElement('input');
+  inp.type='number'; inp.min='0'; inp.className='qty-input';
+  inp.value = it.qty; inp.placeholder='0';
+  inp.oninput = ()=>{
+    it.qty = inp.value;
+    inp.className = 'qty-input instock ' + stockClass(it.qty, it.rec);
+    saveState();
+  };
+  inp.className = 'qty-input instock ' + stockClass(it.qty, it.rec);
+  tdQty.appendChild(inp);
+
+  const tdDel = document.createElement('td');
+  const del = document.createElement('button');
+  del.className='del-btn'; del.title='Remove item'; del.innerHTML='✕';
+  del.onclick=()=>{
+    if(confirm(`Remove "${it.name}" from ${cat}?`)){
+      const arr = STATE.categories[cat];
+      const i = arr.indexOf(it);
+      if(i>-1) arr.splice(i,1);
+      saveState(); renderCats();
+      const reopened = document.querySelector(`.cat[data-cat="${cssEsc(cat)}"]`);
+      if(reopened) reopened.classList.add('open');
+    }
+  };
+  tdDel.appendChild(del);
+
+  tr.append(tdItem, tdRec, tdQty, tdDel);
+  return tr;
+}
+
+function updateCatCount(wrap){
+  const cat = wrap.dataset.cat;
+  const items = STATE.categories[cat]||[];
+  const onHand = items.reduce((s,i)=>s+(parseInt(i.qty,10)||0),0);
+  wrap.querySelector('.cnt').textContent = `${items.length} items · ${onHand} on hand`;
+}
+
+/* ---------- Summary ---------- */
+function updateSummary(){
+  let items=0,onHand=0,zero=0,low=0;
+  for(const arr of Object.values(STATE.categories)){
+    for(const it of arr){
+      items++;
+      const q = parseInt(it.qty,10);
+      if(!isNaN(q)){
+        onHand += q;
+        if(q<=0) zero++;
+        else if(q < parseRecMin(it.rec)) low++;
+      } else { zero++; }
+    }
+  }
+  document.getElementById('statItems').textContent = items;
+  document.getElementById('statOnHand').textContent = onHand;
+  document.getElementById('statZero').textContent = zero;
+  document.getElementById('statLow').textContent = low;
+  document.querySelectorAll('.cat').forEach(updateCatCount);
+  renderReport();
+}
+
+/* ---------- Below-minimum / reorder report ---------- */
+function collectShortages(){
+  // Returns [{cat, name, qty, min, recText, short, status}] for items under their
+  // recommended minimum. Items with no recommended minimum are skipped.
+  const out=[];
+  for(const [cat, arr] of Object.entries(STATE.categories)){
+    for(const it of arr){
+      const min = parseRecMin(it.rec);
+      if(min<=0) continue;                       // no meaningful minimum set
+      const q = parseInt(it.qty,10);
+      const have = isNaN(q)?0:q;
+      if(have < min){
+        out.push({
+          cat, name: it.name, qty: have, min,
+          recText: String(it.rec||''),
+          short: min - have,
+          status: have<=0 ? 'out' : 'low'
+        });
+      }
+    }
+  }
+  return out;
+}
+
+function renderReport(){
+  const body = document.getElementById('reportBody');
+  const actions = document.getElementById('reportActions');
+  const countEl = document.getElementById('reportCount');
+  if(!body) return;
+  const rows = collectShortages();
+
+  if(rows.length===0){
+    countEl.textContent='';
+    body.innerHTML = `<div class="allgood">✓ All stocked items are at or above their recommended minimums.</div>`;
+    actions.innerHTML='';
+    return;
+  }
+
+  const outCount = rows.filter(r=>r.status==='out').length;
+  countEl.textContent = `${rows.length} item${rows.length===1?'':'s'}`
+    + (outCount ? ` · ${outCount} out of stock` : '');
+
+  // group by category, preserving category order
+  const byCat = {};
+  rows.forEach(r=>{ (byCat[r.cat]=byCat[r.cat]||[]).push(r); });
+
+  let html='';
+  for(const [cat, list] of Object.entries(byCat)){
+    html += `<div class="rgroup">${escapeHtml(cat)}</div><table><tbody>`;
+    for(const r of list){
+      const tag = r.status==='out'
+        ? `<span class="tag out">OUT</span>`
+        : `<span class="tag low">LOW</span>`;
+      html += `<tr>
+        <td>${tag} ${escapeHtml(r.name)}</td>
+        <td class="rq">Have ${r.qty} / Min ${escapeHtml(r.recText)}</td>
+        <td class="rq">Short <span class="short">${r.short}</span></td>
+      </tr>`;
+    }
+    html += `</tbody></table>`;
+  }
+  body.innerHTML = html;
+
+  actions.innerHTML = `<button id="copyReport">Copy Reorder List</button>`;
+  document.getElementById('copyReport').onclick=()=>copyReport(rows);
+}
+
+function copyReport(rows){
+  const lines = ['FDEC Kitchen Hood Suppression — Reorder List',
+                 new Date().toLocaleString(), ''];
+  let lastCat=null;
+  for(const r of rows){
+    if(r.cat!==lastCat){ lines.push(`== ${r.cat} ==`); lastCat=r.cat; }
+    const st = r.status==='out'?'[OUT]':'[LOW]';
+    lines.push(`  ${st} ${r.name} — have ${r.qty}, min ${r.recText}, short ${r.short}`);
+  }
+  const text = lines.join('\n');
+  const done = ()=>{ const b=document.getElementById('copyReport'); if(b){ const t=b.textContent; b.textContent='✓ Copied'; setTimeout(()=>b.textContent=t,1500);} };
+  if(navigator.clipboard && navigator.clipboard.writeText){
+    navigator.clipboard.writeText(text).then(done).catch(()=>fallbackCopy(text,done));
+  } else { fallbackCopy(text,done); }
+}
+function fallbackCopy(text, cb){
+  const ta=document.createElement('textarea');
+  ta.value=text; ta.style.position='fixed'; ta.style.opacity='0';
+  document.body.appendChild(ta); ta.select();
+  try{ document.execCommand('copy'); cb&&cb(); }catch(e){ alert('Copy failed — select manually.'); }
+  document.body.removeChild(ta);
+}
+
+/* ---------- Add category ---------- */
+function addCategory(){
+  const inp = document.getElementById('newCatName');
+  const name = inp.value.trim();
+  if(!name) return;
+  if(STATE.categories[name]){ alert(`Category "${name}" already exists.`); return; }
+  STATE.categories[name] = [];
+  inp.value='';
+  saveState();
+  renderCats();
+  const wrap = document.querySelector(`.cat[data-cat="${cssEsc(name)}"]`);
+  if(wrap){ wrap.classList.add('open'); wrap.scrollIntoView({behavior:'smooth', block:'center'}); }
+}
+document.getElementById('addCatBtn').onclick = addCategory;
+document.getElementById('newCatName').addEventListener('keydown', e=>{ if(e.key==='Enter') addCategory(); });
+
+/* ---------- Toolbar ---------- */
+document.getElementById('expandAll').onclick=()=>document.querySelectorAll('.cat').forEach(c=>c.classList.add('open'));
+document.getElementById('collapseAll').onclick=()=>document.querySelectorAll('.cat').forEach(c=>c.classList.remove('open'));
+document.getElementById('search').oninput=function(){
+  const q=this.value.trim().toLowerCase();
+  document.querySelectorAll('.cat').forEach(cat=>{
+    let anyVisible=false;
+    cat.querySelectorAll('tbody tr').forEach(tr=>{
+      const match = !q || tr.dataset.name.includes(q);
+      tr.style.display = match?'':'none';
+      if(match) anyVisible=true;
+    });
+    if(q){ cat.style.display = anyVisible?'':'none'; if(anyVisible) cat.classList.add('open'); }
+    else { cat.style.display=''; }
+  });
+};
+
+/* ---------- utils ---------- */
+function escapeHtml(s){return String(s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));}
+function cssEsc(s){return (window.CSS&&CSS.escape)?CSS.escape(s):s.replace(/"/g,'\\"');}
+
+/* ---------- iOS / install-context detection ---------- */
+(function envBanners(){
+  const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) ||
+    (navigator.platform==='MacIntel' && navigator.maxTouchPoints>1);
+  const standalone = ('standalone' in navigator && navigator.standalone) ||
+    (window.matchMedia && window.matchMedia('(display-mode: standalone)').matches);
+  const isFile = location.protocol === 'file:';
+
+  // Warn when opened as a local file (storage is unreliable there on iOS)
+  if(isFile){
+    const w = document.getElementById('fileWarn');
+    if(w) w.classList.remove('hidden');
+  }
+  // Show "Add to Home Screen" tip on iOS Safari when not yet installed and not a file
+  if(isIOS && !standalone && !isFile){
+    let dismissed=false;
+    try{ dismissed = localStorage.getItem('fdec_tip_dismissed')==='1'; }catch(e){}
+    if(!dismissed){
+      const t = document.getElementById('installTip');
+      if(t) t.classList.remove('hidden');
+    }
+  }
+  const d = document.getElementById('tipDismiss');
+  if(d) d.onclick=()=>{
+    document.getElementById('installTip').classList.add('hidden');
+    try{ localStorage.setItem('fdec_tip_dismissed','1'); }catch(e){}
+  };
+})();
+
+/* ---------- boot: auto-login if session exists ---------- */
+(function boot(){
+  const sess = getSession();
+  const users = getUsers();
+  if(sess && sess.username && users[sess.username]){
+    enterApp(sess.username);
+  }
+})();
+</script>
+</body>
+</html>
